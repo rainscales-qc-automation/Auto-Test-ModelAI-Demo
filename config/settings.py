@@ -1,10 +1,16 @@
 import json
 import os
+import yaml
 from os.path import join, dirname
 
 from dotenv import load_dotenv
 
-load_dotenv('.env')
+load_dotenv(join(dirname(dirname(__file__)), '.env'))
+
+def load_config(file_path):
+    with open(file_path, 'r') as file:
+        return yaml.safe_load(file)
+
 
 class Config:
     API_STAGING = "http://localhost:8888"
@@ -18,16 +24,15 @@ class Config:
     SMB_USER = os.environ.get("SMB_USER")
     SMB_PASSWORD = os.environ.get("SMB_PASSWORD")
 
+    SMB_ROOT = "qc_ai_testing"
+
+    RULES_CONFIG = load_config(join(dirname(__file__), 'rules.yaml'))
+
 
     @staticmethod
     def get_folder_video():
         dir_video = join(join(dirname(dirname(__file__)), 'data_test'), 'video')
         return dir_video
-
-    @staticmethod
-    def get_folder_expected_result():
-        dir_expected_result = join(join(dirname(dirname(__file__)), 'data_test'), 'expected_result')
-        return dir_expected_result
 
     @staticmethod
     def get_data_test_json():
@@ -36,10 +41,6 @@ class Config:
             return json.load(f)
 
 
-import requests
+cf = Config()
+print(cf.SMB_SERVER)
 
-url = "http://localhost:8888/api/rules/abc123"
-data = {"threshold": 0.9, "enabled": True}
-
-response = requests.post(url, json=data)
-print(response.json())

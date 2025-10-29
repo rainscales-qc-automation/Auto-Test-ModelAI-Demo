@@ -1,3 +1,4 @@
+dotenv==0.9.9
 requests==2.32.5
 numpy==2.2.6
 pandas==2.3.3
@@ -5,3 +6,8 @@ loguru==0.7.3
 fastapi==0.120.0
 uvicorn==0.38.0
 python-multipart==0.0.20
+smbprotocol==1.15.0
+gspread==6.2.1
+google-auth==2.42.0
+python-dotenv==1.2.1
+PyYAML==6.0.3
