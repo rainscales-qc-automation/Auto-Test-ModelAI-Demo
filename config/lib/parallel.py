@@ -4,7 +4,7 @@ from multiprocessing import Manager
 
 from loguru import logger
 
-from lib.until import send_video_to_ai, compare_ai_vs_ground_truth, export_report_to_excel
+from config.lib.until import send_video_to_ai, compare_ai_vs_ground_truth, export_report_to_excel
 
 
 def function_process(task, log_pth):

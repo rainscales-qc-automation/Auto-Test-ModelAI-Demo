@@ -1,7 +1,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
 
-SERVICE_ACCOUNT_FILE = "service-google-sheet.json"
+SERVICE_ACCOUNT_FILE = "config/service-google-sheet.json"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)

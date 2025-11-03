@@ -2,7 +2,7 @@ import pandas as pd
 import requests
 from loguru import logger
 
-from lib.config import Config
+from config.lib.config import Config
 
 cf = Config()
 

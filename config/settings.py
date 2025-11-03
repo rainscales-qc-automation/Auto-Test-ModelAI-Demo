@@ -13,13 +13,20 @@ def load_config(file_path):
 
 
 class Config:
-    API_STAGING = "http://localhost:8888"
+    API_LOCAL = "http://localhost:8888"
+    API_STAGING = "https://fake-agent.reg-stg.rainscales.xyz"
+    API_KEY = os.environ.get("API_KEY", None)
 
-    URL_UPDATE_RULE_CODE = "/api/rules/"   # /api/rules/{ruleCode}
+    TIME_OUT_API = 60
+
+    URL_GET_RULE_CODE = "/api/rules/"   # /api/rules/{ruleCode}
+    URL_UPDATE_RULE_CODE = "/api/rule/"
     URL_POST_VIDEO = "/api/videos"
+    URL_CHECK_MISSING_VIDEO = "/api/videos/check"
     URL_ANALYZE_VIDEO = "/api/videos/analyze"
 
-    SERVICE_ACCOUNT_FILE = (dirname(dirname(__file__)), 'service-google-sheet.json')
+    SERVICE_ACCOUNT_FILE = join(join(dirname(dirname(__file__)), 'config'), 'service-google-sheet.json')
+    SHEET_ID = os.environ.get("SHEET_ID")
     SMB_SERVER = os.environ.get("SMB_SERVER")
     SMB_USER = os.environ.get("SMB_USER")
     SMB_PASSWORD = os.environ.get("SMB_PASSWORD")
@@ -42,5 +49,10 @@ class Config:
 
 
 cf = Config()
-print(cf.SMB_SERVER)
+if __name__ == '__main__':
+    print(cf.RULES_CONFIG)
+    print(cf.API_KEY)
+    print(cf.SERVICE_ACCOUNT_FILE)
+
+
 

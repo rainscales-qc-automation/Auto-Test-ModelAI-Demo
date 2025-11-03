@@ -36,12 +36,7 @@ class SMBConnector:
         return path
 
     def get_video(self, _dir: str, video_name: str) -> Optional[bytes]:
-        """
-        Get Video from SMB
-        Args:
-            _dir: Dir tenant (VD: '01.LFVN')
-            video_name: File name video
-        """
+        """ Get Video from SMB """
         if not self._connected:
             raise ConnectionError("Not connected. Call connect() first")
 
@@ -54,6 +49,23 @@ class SMBConnector:
         except Exception as e:
             logger.error(f"Download error {video_name}: {e}")
             return None
+
+    def get_video_by_list(self, _dir, list_video_names: List[str]) -> list:
+        """ Get multiple videos from SMB by a list of video names. """
+        if not self._connected:
+            raise ConnectionError("Not connected. Call connect() first")
+        results = []
+        for video_name in list_video_names:
+            try:
+                path = self._build_path(_dir, video_name)
+                with open_file(path, mode="rb") as f:
+                    data = f.read()
+                logger.info(f"Downloaded {video_name}: {len(data)} bytes")
+                results.append((video_name, data))
+            except Exception as e:
+                logger.error(f"Download error {video_name}: {e}")
+                results.append((video_name, None))
+        return results
 
     def video_exists(self, _dir: str, video_name: str) -> bool:
         """Check if video exists"""
