@@ -1,0 +1,63 @@
+tenant:
+  - name: 'Linfox Viet Nam'
+    dir: '01. LFVN'
+    config rule: 'Rule_Config_Details'
+    enabled: true
+    rules:
+      - name: 'USEPHONE'
+        code: 'PAR02'
+        sheet: 'USEPHONE_Smoke'
+        enabled: true
+
+      - name: 'NWALKWAY'
+        code: 'HM05'
+        sheet: 'NWALKWAY_Smoke'
+        enabled: false
+
+      - name: 'MCROSSR'
+        code: 'MHE03'
+        sheet: 'MCROSSR_Smoke'
+        enabled: false
+
+      - name: 'COLLISON'
+        code: 'MHE01'
+        sheet: 'COLLISON_Smoke'
+        enabled: false
+
+      - name: 'MOV8PALLETS'
+        code: 'MHE04'
+        sheet: 'MOV8PALLETS_Smoke'
+        enabled: false
+
+      - name: 'LOADHIGH'
+        code: 'MHE10'
+        sheet: 'LOADHIGH_Smoke'
+        enabled: false
+
+      - name: 'SIT2M'
+        code: 'HM07'
+        sheet: 'SIT2M_Smoke'
+        enabled: false
+
+      - name: 'PALLETONF'
+        code: 'PL02'
+        sheet: 'PALLETONF_Smoke'
+        enabled: false
+
+      - name: 'OTH02'
+        code: 'OTH02'
+        sheet: 'OTH02_Smoke'
+        enabled: false
+
+      - name: 'PALLETWRONG'
+        code: 'PL03'
+        sheet: 'PALLETWRONG_Smoke'
+        enabled: false
+
+  - name: 'Linfox Thai Lan'
+    dir: '02.LFTL'
+    enabled: false
+    rules:
+      - name: 'USEPHONE'
+        sheet: 'USEPHONE_Smoke'
+        enabled: false

@@ -1,6 +1,10 @@
-from os.path import join, dirname
 import json
+import os
+from os.path import join, dirname
 
+from dotenv import load_dotenv
+
+load_dotenv('.env')
 
 class Config:
     API_STAGING = "http://localhost:8888"
@@ -8,6 +12,12 @@ class Config:
     URL_UPDATE_RULE_CODE = "/api/rules/"   # /api/rules/{ruleCode}
     URL_POST_VIDEO = "/api/videos"
     URL_ANALYZE_VIDEO = "/api/videos/analyze"
+
+    SERVICE_ACCOUNT_FILE = (dirname(dirname(__file__)), 'service-google-sheet.json')
+    SMB_SERVER = os.environ.get("SMB_SERVER")
+    SMB_USER = os.environ.get("SMB_USER")
+    SMB_PASSWORD = os.environ.get("SMB_PASSWORD")
+
 
     @staticmethod
     def get_folder_video():

@@ -3,8 +3,8 @@ from pathlib import Path
 
 from loguru import logger
 
-from lib.config import Config
-from lib.parallel import process_pool_task, function_process
+from config.lib.config import Config
+from config.lib.parallel import process_pool_task, function_process
 
 # def run_ai_model_test(api_url: str, video_path: str, ground_truth_path: str, output_path="ai_test_result.xlsx"):
 #     from lib.until import send_video_to_ai, compare_ai_vs_ground_truth, export_report_to_excel
