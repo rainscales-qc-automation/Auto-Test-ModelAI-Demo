@@ -10,29 +10,35 @@ logger = logging.getLogger(__name__)
 
 class AIAPIClient:
 
-    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 300):
+    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 300, debug = False):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key or cf.API_KEY
         self.timeout = timeout or cf.TIMEOUT
         self.session = requests.Session()
+        self.debug = debug
+        self.hard_headers = {"X-API-Key": self.api_key} if self.api_key else {}
 
     def _headers(self) -> Dict[str, str]:
         return {"X-API-Key": self.api_key} if self.api_key else {}
 
     def update_rule(self, rule_code: str, config: Dict) -> Dict:
         """Update rule"""
+        if self.debug:
+            return {}
         url = f"{self.base_url}{cf.URL_UPDATE_RULE_CODE}"
         data_update = {"rule_code": rule_code, "config": config}
-        response = self.session.post(url, json=data_update, headers=self._headers(), timeout=self.timeout)
+        response = self.session.post(url, json=data_update, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         logger.info(f"API update rule: {rule_code}" )
         return response.json()
 
     def upload_videos(self, videos: List[Tuple[str, bytes]]) -> Dict:
         """Upload videos: [(filename, video_data), ...]"""
+        if self.debug:
+            return {}
         url = f"{self.base_url}{cf.URL_POST_VIDEO}"
         files = [('videos', (name, data, 'video/mp4')) for name, data in videos]
-        response = self.session.post(url, files=files, headers=self._headers(), timeout=self.timeout)
+        response = self.session.post(url, files=files, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         logger.info(f"Uploaded {len(videos)} videos")
         return response.json()
@@ -40,15 +46,17 @@ class AIAPIClient:
     def check_missing_videos(self, filenames: List[str]) -> List[str]:
         """Check videos not yet upload"""
         url = f"{self.base_url}{cf.URL_CHECK_MISSING_VIDEO}"
-        response = self.session.post(url, json={"videos": filenames}, headers=self._headers(), timeout=self.timeout)
+        response = self.session.post(url, json={"videos": filenames}, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         return response.json().get("missing_videos", [])
 
     def analyze_videos(self, batch_code: str, videos_config: Dict[str, List[str]]) -> int:
         """Analyze: batch_code + {cam_id: [video_codes]}"""
+        if self.debug:
+            return 200
         url = f"{self.base_url}{cf.URL_ANALYZE_VIDEO}"
         payload = {"batch_code": batch_code, "videos_config": videos_config}
-        response = self.session.post(url, json=payload, headers=self._headers(), timeout=self.timeout)
+        response = self.session.post(url, json=payload, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         logger.info(f"Started analysis: {batch_code}")
         return response.status_code
@@ -63,7 +71,7 @@ class AIAPIClient:
         if rule_code:
             params["rule_code"] = rule_code
 
-        response = self.session.get(url, params=params, headers=self._headers(), timeout=self.timeout)
+        response = self.session.get(url, params=params, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         return response.json()
 

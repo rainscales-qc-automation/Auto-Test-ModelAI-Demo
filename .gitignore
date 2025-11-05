@@ -21,6 +21,8 @@ __pycache__/
 logs
 # C extensions
 *.so
+*.html
+*.csv
 
 # Distribution / packaging
 /blog-env/Lib/site-packages

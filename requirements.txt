@@ -11,3 +11,4 @@ gspread==6.2.1
 google-auth==2.42.0
 python-dotenv==1.2.1
 PyYAML==6.0.3
+ipython==8.37.0

@@ -19,7 +19,9 @@ class GoogleSheetConnector:
         self.client = None
         self.sheet = None
         self.scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        self.detail_rule = 'E'
         self.test_case_id = 'F'
+        self.test_case_description = 'G'
         self.video_name_colum = 'H'
         self.camera_name_colum = 'I'
         self.start_time_colum = 'K'
@@ -140,6 +142,7 @@ class GoogleSheetConnector:
 
         needed_columns = [
             self.test_case_id,
+            self.test_case_description,
             self.video_name_colum,
             self.camera_name_colum,
             self.start_time_colum,
