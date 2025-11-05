@@ -13,6 +13,44 @@ def gen_timestamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def format_duration(seconds: float) -> str:
+    """
+    Format duration in seconds to readable string
+    Args:
+        seconds: Duration in seconds
+    Returns:
+        Formatted string like "2h 15m 30s" or "45m 20s" or "25s"
+    """
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    if secs > 0 or not parts:  # Always show seconds if nothing else
+        parts.append(f"{secs}s")
+
+    return " ".join(parts)
+
+
+def to_bbox_xywh(coords):
+    """
+    Chuyển mảng [x1, y1, x2, y2] sang [x, y, w, h]
+    x, y: góc trên bên trái
+    w, h: chiều rộng và chiều cao
+    """
+    if len(coords) != 4:
+        raise ValueError("Mảng phải gồm đúng 4 phần tử: [x1, y1, x2, y2]")
+
+    x_min, y_min, x_max, y_max = coords
+    width = x_max - x_min
+    height = y_max - y_min
+    return [x_min, y_min, width, height]
+
+
 class ResultWriter:
     """Handle writing results to files"""
 
@@ -38,7 +76,8 @@ class ResultWriter:
         if not session_name:
             session_name = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        filepath = self.results_dir / f"test_results_{session_name}.json"
+        filepath = self.results_dir / session_name / f"test_results_{session_name}.json"
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.all_results, f, indent=2, ensure_ascii=False)
         logger.info(f"All results saved: {filepath}")
@@ -49,6 +88,7 @@ class ResultWriter:
         logger.info("=" * 60)
         for rule_key, status in self.all_results['summary'].items():
             logger.info(f"{rule_key}: {status.upper()}")
+        return f"test_results_{session_name}.json", session_name
 
 
 class VideoConfigBuilder:
@@ -173,14 +213,26 @@ def build_result_data(
         videos_metadata: List[Dict],
         missing_count: int,
         videos_config: Dict,
-        validation_results: List[Dict] = None
+        validation_results: List[Dict] = None,
+        start_time: datetime = None,
+        end_time: datetime = None,
+        duration_seconds: float = None
 ) -> Dict:
-    """Build result data structure with enhanced format"""
-
+    """Build result data structure with enhanced format and timing"""
     # Calculate statistics from validation results
     total_testcases = len(validation_results) if validation_results else 0
     passed_count = sum(1 for v in validation_results if v.get('detect_result') == 'PASSED')
     failed_count = sum(1 for v in validation_results if v.get('detect_result') == 'FAILED')
+
+    # Build timing info
+    timing_info = {}
+    if start_time:
+        timing_info['start_time'] = int(start_time.timestamp())
+    if end_time:
+        timing_info['end_time'] = int(end_time.timestamp())
+    if duration_seconds is not None:
+        timing_info['duration_seconds'] = round(duration_seconds, 2)
+        timing_info['duration_formatted'] = format_duration(duration_seconds)
 
     return {
         "batch_code": batch_code,
@@ -197,6 +249,7 @@ def build_result_data(
             "failed": failed_count,
             "pass_rate": round((passed_count / total_testcases * 100), 2) if total_testcases > 0 else 0.0
         },
+        "timing": timing_info,
         "test_case_validation_result": validation_results or [],
         "status": "success"
     }

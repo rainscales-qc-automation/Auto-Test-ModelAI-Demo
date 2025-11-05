@@ -34,6 +34,9 @@ class Config:
     SMB_ROOT = "qc_ai_testing"
 
     RULES_CONFIG = load_config(join(dirname(__file__), 'rules.yaml'))
+    DIR_RESULTS = join(join(dirname(dirname(__file__)), 'src'), 'results')
+
+    DEBUG = True
 
 
     @staticmethod
@@ -51,7 +54,7 @@ class Config:
 cf = Config()
 if __name__ == '__main__':
     print(cf.RULES_CONFIG)
-    print(cf.API_KEY)
+    print(cf.DIR_RESULTS)
     print(cf.SERVICE_ACCOUNT_FILE)
 
 

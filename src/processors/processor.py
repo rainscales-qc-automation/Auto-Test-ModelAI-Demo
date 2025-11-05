@@ -1,6 +1,7 @@
 """Test Processor - Main workflow for AI model testing"""
 import logging
 import time
+from datetime import datetime
 import uuid
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
@@ -10,9 +11,11 @@ from src.connectors.ai_api import AIAPIClient
 from src.connectors.google_sheet import GoogleSheetConnector
 from src.connectors.smb_storage import SMBConnector
 from src.processors.validator import ResultValidator, ExpectedResultBuilder
+from src.utils.simp_report import SimpReportGenerator
+from src.utils.convert_json_to_csv import TestResultConverterCSV
 from src.utils.helpers import (
     ResultWriter, VideoConfigBuilder, BatchCodeGenerator,
-    CameraMapper, ConfigParser, build_result_data, gen_timestamp
+    CameraMapper, ConfigParser, build_result_data, gen_timestamp, format_duration
 )
 
 logger = logging.getLogger(__name__)
@@ -38,18 +41,21 @@ class ProcessedRule:
     videos_config: Dict
     missing_count: int
     video_names: List[str]
+    start_time: datetime  # NEW: Track start time
 
 
 class TestProcessor:
     """Process workflow test"""
 
-    def __init__(self, api_url: str = cf.API_LOCAL):
+    def __init__(self, api_url: str = cf.API_LOCAL, debug = cf.DEBUG, iou_threshold=0.5):
         self.gs = GoogleSheetConnector()
         self.smb = SMBConnector(cf.SMB_SERVER, cf.SMB_USER, cf.SMB_PASSWORD, cf.SMB_ROOT)
-        self.api = AIAPIClient(api_url)
+        self.api = AIAPIClient(base_url=api_url, debug=debug)
         self.camera_mapper = CameraMapper()
         self.result_writer = ResultWriter()
         self.timestamp = gen_timestamp()
+        self.debug = debug
+        self.iou_threshold = iou_threshold
 
     def get_enabled_rules(self) -> List[TestRule]:
         """Get list rules for test"""
@@ -111,7 +117,7 @@ class TestProcessor:
         """Get expected results from Google Sheet"""
         sheet_rows = self.gs.get_info_rows_by_video_names(rule.sheet_name, video_names)
 
-        expected_builder = ExpectedResultBuilder(fps=60)
+        expected_builder = ExpectedResultBuilder(fps=24, compression_ratio=2.5)
         expected_results = {}
 
         for row in sheet_rows:
@@ -126,8 +132,11 @@ class TestProcessor:
 
     def upload_and_trigger_analysis(self, rule: TestRule) -> ProcessedRule:
         """Phase 1: Upload videos and trigger AI analysis"""
-        logger.info(f"\n{'=' * 60}")
+        start_time = datetime.now()  # Track start time
+
+        logger.info(f"{'=' * 60}")
         logger.info(f"[PHASE 1] Uploading: {rule.tenant_name} - {rule.rule_name}")
+        logger.info(f"Start Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"{'=' * 60}")
 
         # 1. Update rule config
@@ -165,6 +174,7 @@ class TestProcessor:
         # 6. Generate batch code and trigger analysis
         batch_code = BatchCodeGenerator.generate(rule.tenant_name, rule.rule_name, self.timestamp)
         logger.info(f"Starting analysis: {batch_code}")
+
         self.api.analyze_videos(batch_code, videos_config)
 
         return ProcessedRule(
@@ -173,15 +183,17 @@ class TestProcessor:
             videos_metadata=videos_metadata,
             videos_config=videos_config,
             missing_count=len(missing),
-            video_names=all_names
+            video_names=all_names,
+            start_time=start_time
         )
 
     def validate_results(self, processed: ProcessedRule) -> Dict:
         """Phase 2: Get AI results and validate"""
         rule = processed.rule
         batch_code = processed.batch_code
+        start_time = processed.start_time
 
-        logger.info(f"\n{'=' * 60}")
+        logger.info(f"{'=' * 60}")
         logger.info(f"[PHASE 2] Validating: {rule.tenant_name} - {rule.rule_name}")
         logger.info(f"{'=' * 60}")
 
@@ -202,7 +214,7 @@ class TestProcessor:
                 evidences_by_video[video_code] = frames
 
         # 4. Validate each video
-        validator = ResultValidator(iou_threshold=0.5)
+        validator = ResultValidator(iou_threshold=self.iou_threshold)
         validation_results = []
         passed_count = 0
         failed_count = 0
@@ -215,7 +227,6 @@ class TestProcessor:
             validation_results.append(validation)
 
             detect_result = validation.get('detect_result', 'UNKNOWN')
-            expected_status = validation.get('expected_status', '')
             note = validation.get('validation_note', '')
 
             if detect_result == 'PASSED':
@@ -225,6 +236,10 @@ class TestProcessor:
                 failed_count += 1
                 logger.info(f"  ✗ {video_name} (TC{validation['test_case_id']}): FAILED - {note}")
 
+        # Calculate timing
+        end_time = datetime.now()
+        duration_seconds = (end_time - start_time).total_seconds()
+
         total_testcases = len(validation_results)
         pass_rate = (passed_count / total_testcases * 100) if total_testcases > 0 else 0.0
 
@@ -233,11 +248,22 @@ class TestProcessor:
         logger.info(f"  Passed: {passed_count}")
         logger.info(f"  Failed: {failed_count}")
         logger.info(f"  Pass Rate: {pass_rate:.2f}%")
+        logger.info(f"  Start Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"  End Time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"  Duration: {format_duration(duration_seconds)}")
 
-        # 5. Build result data
+        # 5. Build result data with timing
         result_data = build_result_data(
-            batch_code, self.timestamp, rule, processed.videos_metadata,
-            processed.missing_count, processed.videos_config, validation_results
+            batch_code=batch_code,
+            timestamp=self.timestamp,
+            rule=rule,
+            videos_metadata=processed.videos_metadata,
+            missing_count=processed.missing_count,
+            videos_config=processed.videos_config,
+            validation_results=validation_results,
+            start_time=start_time,
+            end_time=end_time,
+            duration_seconds=duration_seconds
         )
 
         self.result_writer.add_result(batch_code, rule.rule_code, result_data)
@@ -250,7 +276,10 @@ class TestProcessor:
             "cameras": list(processed.videos_config.keys()),
             "passed": passed_count,
             "failed": failed_count,
-            "pass_rate": round(pass_rate, 2)
+            "pass_rate": round(pass_rate, 2),
+            "start_time": start_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "end_time": end_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "duration": format_duration(duration_seconds)
         }
 
     def run(self):
@@ -265,7 +294,7 @@ class TestProcessor:
             return
 
         # ========== PHASE 1: Upload and Trigger Analysis ==========
-        logger.info("\n" + "=" * 80)
+        logger.info("=" * 80)
         logger.info("PHASE 1: UPLOADING VIDEOS AND TRIGGERING ANALYSIS")
         logger.info("=" * 80)
 
@@ -286,17 +315,20 @@ class TestProcessor:
                 })
 
         # ========== Wait for AI Processing ==========
-        if processed_rules:
-            time.sleep(30)
-            self.api.analyze_videos(batch_code=str(uuid.uuid4()), videos_config={"linfox_DCBN-192_168_10_8": ["USEPHONE_VIP_2"]})
-            wait_time = 90  # 1 minute
-            logger.info(f"\n{'=' * 80}")
-            logger.info(f"Waiting {wait_time} seconds for AI to process videos...")
+        if processed_rules and not self.debug:
+            time.sleep(10)
+            self.api.analyze_videos(
+                batch_code=self.timestamp + '__' + str(uuid.uuid4()),
+                videos_config={"linfox_DCBN-192_168_10_8": ["USEPHONE_VIP_1"]},
+            )
+            wait_time = 70 * len(processed_rules)
+            logger.info(f"{'=' * 80}")
+            logger.info(f"Waiting {wait_time} (70 * {len(processed_rules)}) seconds for AI to process videos...")
             logger.info(f"{'=' * 80}")
             time.sleep(wait_time)
 
         # ========== PHASE 2: Validate Results ==========
-        logger.info("\n" + "=" * 80)
+        logger.info("=" * 80)
         logger.info("PHASE 2: FETCHING AND VALIDATING RESULTS")
         logger.info("=" * 80)
 
@@ -304,6 +336,8 @@ class TestProcessor:
         for processed in processed_rules:
             rule = processed.rule
             try:
+                if self.debug:
+                    processed.batch_code = 'Linfox_Viet_Nam_USEPHONE_20251105_112714'
                 result = self.validate_results(processed)
                 results.append({"rule": f"{rule.tenant_name} - {rule.rule_name}", **result})
                 logger.info(f"✓ Validated: {rule.tenant_name} - {rule.rule_name}")
@@ -319,26 +353,32 @@ class TestProcessor:
         results.extend(failed_rules)
 
         # ========== Summary ==========
-        logger.info(f"\n{'=' * 80}")
+        logger.info(f"{'=' * 80}")
         logger.info("FINAL SUMMARY")
         logger.info(f"{'=' * 80}")
         for r in results:
             status = r['status']
             rule_name = r['rule']
             if status == 'success':
-                logger.info(f"✓ {rule_name}: SUCCESS")
+                logger.info(f"✓ {rule_name}: TEST SUCCESS")
                 logger.info(f"  - Test Cases: {r.get('total_testcases', 0)}")
                 logger.info(f"  - Passed: {r.get('passed', 0)}")
                 logger.info(f"  - Failed: {r.get('failed', 0)}")
                 logger.info(f"  - Pass Rate: {r.get('pass_rate', 0)}%")
+                logger.info(f"  - Duration: {r.get('duration', 'N/A')}")
             else:
                 logger.info(f"✗ {rule_name}: FAILED - {r.get('message', 'Unknown error')}")
 
-        self.result_writer.save_all(self.timestamp)
+        logger.info("CREATE REPORT SIMPLE")
+        filename_output, dir_session_name = self.result_writer.save_all(self.timestamp)
+        report = SimpReportGenerator(filename_output, dir_session_name)
+        report.generate_all()
+        csv_report = TestResultConverterCSV(filename_output, dir_session_name)
+        csv_report.convert()
         return results
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    processor = TestProcessor(api_url=cf.API_STAGING)
+    processor = TestProcessor(api_url=cf.API_STAGING, iou_threshold=0.3)
     processor.run()

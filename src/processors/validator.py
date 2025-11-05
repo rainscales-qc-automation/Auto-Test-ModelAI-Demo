@@ -8,8 +8,16 @@ logger = logging.getLogger(__name__)
 class ExpectedResultBuilder:
     """Build expected detection results from sheet data"""
 
-    def __init__(self, fps: int = 60):
+    def __init__(self, fps: int = 24, compression_ratio: float = 2.5):
+        """
+        Args:
+            fps: Original video FPS (24)
+            compression_ratio: Video compression ratio (2.5x faster)
+        """
         self.fps = fps
+        self.compression_ratio = compression_ratio
+        # Frame conversion rate: original_fps / compression_ratio
+        self.frame_rate = fps / compression_ratio  # 24 / 2.5 = 9.6
 
     def time_to_seconds(self, time_str: str) -> float:
         """Convert MM:SS to seconds"""
@@ -18,29 +26,28 @@ class ExpectedResultBuilder:
         parts = time_str.split(':')
         return int(parts[0]) * 60 + int(parts[1])
 
-    def calculate_frame_id(self, event_time: str, event_start_time: str) -> int:
+    def calculate_relative_frame_offset(self, event_time: str, event_start_time: str) -> int:
         """
-        Calculate frame ID based on time from event start
-
+        Calculate relative frame offset from event start
         Args:
             event_time: Time point in format "MM:SS"
             event_start_time: Event start time in format "MM:SS"
-
         Returns:
-            Frame ID (starting from 1)
+            Relative frame offset (will be added to first_detection_frame later)
         """
         event_seconds = self.time_to_seconds(event_time)
         start_seconds = self.time_to_seconds(event_start_time)
         elapsed = event_seconds - start_seconds
-        return int(elapsed * self.fps) + 1
+
+        # Formula: elapsed_time * 24 / 2.5 = elapsed_time * 9.6
+        relative_offset = int(elapsed * self.frame_rate)
+        return relative_offset
 
     def area_to_bounding_box(self, area: List[int]) -> Dict:
         """
         Convert area [x1, y1, x2, y2] to bounding box format
-
         Args:
             area: [x1, y1, x2, y2]
-
         Returns:
             {"x": x1, "y": y1, "width": w, "height": h}
         """
@@ -60,7 +67,7 @@ class ExpectedResultBuilder:
         rule_code: str
     ) -> List[Dict]:
         """
-        Build expected frame data with detected areas
+        Build expected frame data with detected areas (RELATIVE frame offsets)
 
         Args:
             expected_result: List of detection events with eventStart, eventEnd, area
@@ -69,7 +76,8 @@ class ExpectedResultBuilder:
             rule_code: Rule code for this detection
 
         Returns:
-            List of frame data: [{"frameId": int, "detectedAreas": [...]}, ...]
+            List of frame data with RELATIVE frameId: [{"frameId": int, "detectedAreas": [...]}, ...]
+            Note: frameId here is relative offset, will be added to first_detection_frame later
         """
         if not expected_result:
             return []
@@ -84,20 +92,20 @@ class ExpectedResultBuilder:
             if not event_start or not event_end or not area:
                 continue
 
-            # Calculate frame IDs for start, middle, end
-            start_frame = self.calculate_frame_id(event_start, event_start_time)
-            end_frame = self.calculate_frame_id(event_end, event_start_time)
+            # Calculate relative frame offsets for start, middle, end
+            start_offset = self.calculate_relative_frame_offset(event_start, event_start_time)
+            end_offset = self.calculate_relative_frame_offset(event_end, event_start_time)
 
-            # Calculate middle frame
-            middle_frame = (start_frame + end_frame) // 2
+            # Calculate middle offset
+            middle_offset = (start_offset + end_offset) // 2
 
             # Create bounding box
             bbox = self.area_to_bounding_box(area)
 
-            # Generate 3 frames: start, middle, end
-            for frame_id in [start_frame, middle_frame, end_frame]:
+            # Generate 3 frames: start, middle, end (with relative offsets)
+            for frame_offset in [start_offset, middle_offset, end_offset]:
                 frames.append({
-                    "frameId": frame_id,
+                    "frameId": frame_offset,  # This is RELATIVE offset
                     "detectedAreas": [{
                         "ruleCode": rule_code,
                         "boundingBox": bbox
@@ -122,12 +130,13 @@ class ExpectedResultBuilder:
                 "video_name": str,
                 "test_case_id": str,
                 "expected_status": str,
-                "expected_frames": List[Dict],
+                "expected_frames": List[Dict],  # with RELATIVE frameIds
                 "should_validate": bool
             }
         """
         video_name = row.get('Video Name', '')
         test_case_id = row.get('TC', '')
+        test_case_description = row.get('Test Case Description', '')
         expected_status = row.get('Expected Status', '').strip()
         expected_result = row.get('ExpectedResult', [])
         event_start_time = row.get('EventStartTime', '')
@@ -146,8 +155,9 @@ class ExpectedResultBuilder:
         return {
             "video_name": video_name,
             "test_case_id": test_case_id,
+            "test_case_description": test_case_description,
             "expected_status": expected_status,
-            "expected_frames": expected_frames,
+            "expected_frames": expected_frames,  # RELATIVE frameIds
             "should_validate": True
         }
 
@@ -158,13 +168,29 @@ class ResultValidator:
     def __init__(self, iou_threshold: float = 0.5):
         self.iou_threshold = iou_threshold
 
+    def find_first_detection_frame(self, frames: List[Dict]) -> int:
+        """
+        Find the first frame with detection
+        Args:
+            frames: List of frames from AI results
+        Returns:
+            frameId of first frame with detectedAreas, or 0 if none found
+        """
+        for frame in frames:
+            detected_areas = frame.get('detectedAreas', [])
+            if detected_areas and len(detected_areas) > 0:
+                first_frame_id = frame.get('frameId', 0)
+                logger.info(f"First detection found at frameId: {first_frame_id}")
+                return first_frame_id
+
+        logger.warning("No detection found in frames")
+        return 0
+
     def calculate_iou(self, box1: Dict, box2: Dict) -> float:
         """
         Calculate Intersection over Union (IoU) between two bounding boxes
-
         Args:
             box1, box2: {"x": int, "y": int, "width": int, "height": int}
-
         Returns:
             IoU value (0.0 to 1.0)
         """
@@ -206,7 +232,6 @@ class ResultValidator:
     ) -> Tuple[bool, List[Dict]]:
         """
         Match expected frame with actual AI result frame
-
         Returns:
             (matched: bool, match_details: List[Dict])
         """
@@ -260,11 +285,9 @@ class ResultValidator:
     ) -> Dict:
         """
         Validate one video's results
-
         Args:
-            expected_data: From build_from_sheet_row()
+            expected_data: From build_from_sheet_row() with RELATIVE frameIds
             actual_results: AI detection results (list of frames)
-
         Returns:
             Validation report with enhanced structure
         """
@@ -279,24 +302,54 @@ class ResultValidator:
             return {
                 "video_name": video_name,
                 "test_case_id": expected_data['test_case_id'],
+                "test_case_description": expected_data['test_case_description'],
                 "expected_status": expected_status,
                 "total_frames": 0,
                 "matched_frames": 0,
                 "accuracy": None,
                 "detect_result": "FAILED" if has_detection else "PASSED",
-                "validation_note": "No detection expected" if not has_detection else "Unexpected detection found",
+                "validation_note": "" if not has_detection else "Model detects violation when uploading a NO violation video",
                 "frame_results": []
             }
 
         # Case 2: Expected Status = "Approve"
-        # Create frame lookup
+
+        # Check if actual_results is empty
+        if not actual_results or len(actual_results) == 0:
+            return {
+                "video_name": video_name,
+                "test_case_id": expected_data['test_case_id'],
+                "test_case_description": expected_data['test_case_description'],
+                "expected_status": expected_status,
+                "total_frames": len(expected_frames),
+                "matched_frames": 0,
+                "accuracy": 0.0,
+                "detect_result": "FAILED",
+                "validation_note": "Model detects NO violation when uploading a violation video",
+                "frame_results": []
+            }
+
+        # Find first detection frame (offset x)
+        first_detection_frame = self.find_first_detection_frame(actual_results)
+
+        # Convert expected frames from RELATIVE to ABSOLUTE frameIds
+        absolute_expected_frames = []
+        for exp_frame in expected_frames:
+            relative_frame_id = exp_frame['frameId']
+            absolute_frame_id = first_detection_frame + relative_frame_id
+            absolute_expected_frames.append({
+                "frameId": absolute_frame_id,
+                "detectedAreas": exp_frame['detectedAreas']
+            })
+
+        # Create frame lookup from actual results
         actual_frames_map = {f['frameId']: f for f in actual_results}
 
-        total_frames = len(expected_frames)
+        total_frames = len(absolute_expected_frames)
         matched_frames = 0
         frame_results = []
 
-        for exp_frame in expected_frames:
+        for exp_frame in absolute_expected_frames:
             frame_id = exp_frame['frameId']
             act_frame = actual_frames_map.get(frame_id, {'frameId': frame_id, 'detectedAreas': []})
 
@@ -320,18 +373,24 @@ class ResultValidator:
             "video_name": video_name,
             "test_case_id": expected_data['test_case_id'],
             "expected_status": expected_status,
+            "first_detection_frame": first_detection_frame,
             "total_frames": total_frames,
             "matched_frames": matched_frames,
             "accuracy": round(accuracy, 2),
             "detect_result": detect_result,
-            "validation_note": f"{matched_frames}/{total_frames} frames matched",
+            "validation_note": f"Model detects violation but wrong bounding box ({matched_frames}/{total_frames} frames matched)",
             "frame_results": frame_results
         }
 
 
 if __name__ == "__main__":
     # Example usage
-    builder = ExpectedResultBuilder(fps=60)
+    builder = ExpectedResultBuilder(fps=24, compression_ratio=2.5)
+    result = ResultValidator()
+    print(result.calculate_iou(
+        {'x': 264, 'y': 478, "width": 298, "height": 293},
+        {'x': 354, 'y': 511, "width": 88, "height": 274})
+    )
 
     # Example sheet row
     sheet_row = {
@@ -344,7 +403,6 @@ if __name__ == "__main__":
         'ExpectedResult': [
             {'eventStart': '02:22', 'eventEnd': '02:23', 'area': [156, 503, 331, 786]},
             {'eventStart': '02:24', 'eventEnd': '02:25', 'area': [364, 478, 562, 771]},
-            {'eventStart': '02:24', 'eventEnd': '02:25', 'area': [475, 459, 609, 724]}
         ]
     }
 
@@ -353,7 +411,7 @@ if __name__ == "__main__":
 
     print(f"Video: {expected['video_name']}")
     print(f"Test Case: {expected['test_case_id']}")
-    print(f"Expected Frames: {len(expected['expected_frames'])}")
-    print("\nFrame Details:")
+    print(f"Expected Frames (RELATIVE): {len(expected['expected_frames'])}")
+    print("\nFrame Details (RELATIVE offsets):")
     for frame in expected['expected_frames']:
-        print(f"  Frame {frame['frameId']}: {len(frame['detectedAreas'])} detections")
+        print(f"  Frame offset {frame['frameId']}: {len(frame['detectedAreas'])} detections")
