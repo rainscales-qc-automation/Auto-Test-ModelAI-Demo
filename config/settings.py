@@ -36,7 +36,7 @@ class Config:
     RULES_CONFIG = load_config(join(dirname(__file__), 'rules.yaml'))
     DIR_RESULTS = join(join(dirname(dirname(__file__)), 'src'), 'results')
 
-    DEBUG = True
+    DEBUG = False
 
 
     @staticmethod
