@@ -18,6 +18,7 @@ class Config:
     API_KEY = os.environ.get("API_KEY", None)
 
     TIME_OUT_API = 60
+    TIME_SLEEP = int(os.environ.get("TIME_SLEEP", 15))
 
     URL_GET_RULE_CODE = "/api/rules/"   # /api/rules/{ruleCode}
     URL_UPDATE_RULE_CODE = "/api/rule/"
@@ -36,7 +37,7 @@ class Config:
     RULES_CONFIG = load_config(join(dirname(__file__), 'rules.yaml'))
     DIR_RESULTS = join(join(dirname(dirname(__file__)), 'src'), 'results')
 
-    DEBUG = True
+    DEBUG = False
 
 
     @staticmethod

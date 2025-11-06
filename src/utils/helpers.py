@@ -83,12 +83,12 @@ class ResultWriter:
         logger.info(f"All results saved: {filepath}")
 
         # Print summary
-        logger.info("\n" + "=" * 60)
+        logger.info("=" * 60)
         logger.info("TEST SUMMARY")
         logger.info("=" * 60)
         for rule_key, status in self.all_results['summary'].items():
             logger.info(f"{rule_key}: {status.upper()}")
-        return f"test_results_{session_name}.json", session_name
+        return filepath, session_name
 
 
 class VideoConfigBuilder:
@@ -158,7 +158,7 @@ class CameraMapper:
         for v in videos_data:
             camera_code = self.get_code(v['camera_name'])
             if not camera_code:
-                logger.warning(f"Camera code not found for: {v['camera_name']}")
+                logger.warning(f"Camera code is not configured for rule: {v['camera_name']}")
                 continue
             result.append({
                 'video_name': v['video_name'],

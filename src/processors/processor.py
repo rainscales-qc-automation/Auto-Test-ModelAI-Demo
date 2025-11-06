@@ -56,6 +56,7 @@ class TestProcessor:
         self.timestamp = gen_timestamp()
         self.debug = debug
         self.iou_threshold = iou_threshold
+        self.total_video = 0
 
     def get_enabled_rules(self) -> List[TestRule]:
         """Get list rules for test"""
@@ -154,6 +155,7 @@ class TestProcessor:
 
         # 3. Check missing videos
         all_names = [v['video_name'] for v in videos_metadata]
+        self.total_video += len(all_names)
         missing = self.api.check_missing_videos(all_names)
         logger.info(f"Missing: {len(missing)}/{len(all_names)} videos")
 
@@ -321,9 +323,9 @@ class TestProcessor:
                 batch_code=self.timestamp + '__' + str(uuid.uuid4()),
                 videos_config={"linfox_DCBN-192_168_10_8": ["USEPHONE_VIP_1"]},
             )
-            wait_time = 70 * len(processed_rules)
+            wait_time = cf.TIME_SLEEP * self.total_video
             logger.info(f"{'=' * 80}")
-            logger.info(f"Waiting {wait_time} (70 * {len(processed_rules)}) seconds for AI to process videos...")
+            logger.info(f"Waiting {wait_time} ({cf.TIME_SLEEP} * {self.total_video}) seconds for AI to process videos...")
             logger.info(f"{'=' * 80}")
             time.sleep(wait_time)
 
@@ -370,11 +372,14 @@ class TestProcessor:
                 logger.info(f"✗ {rule_name}: FAILED - {r.get('message', 'Unknown error')}")
 
         logger.info("CREATE REPORT SIMPLE")
-        filename_output, dir_session_name = self.result_writer.save_all(self.timestamp)
-        report = SimpReportGenerator(filename_output, dir_session_name)
-        report.generate_all()
-        csv_report = TestResultConverterCSV(filename_output, dir_session_name)
-        csv_report.convert()
+        filepath_output, dir_session_name = self.result_writer.save_all(self.timestamp)
+        report_htmp_simp = SimpReportGenerator(filepath_output, dir_session_name)
+        dir_report_htmp_simp = report_htmp_simp.generate_all()
+        csv_report = TestResultConverterCSV(filepath_output, dir_session_name)
+        dir_csv_report = csv_report.convert()
+        logger.info(f"JSON Report: {filepath_output}")
+        logger.info(f"HTML Simple Report: {dir_report_htmp_simp}")
+        logger.info(f"CSV Report: {dir_csv_report}")
         return results
 
 

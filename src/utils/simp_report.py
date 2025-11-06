@@ -6,7 +6,7 @@ from config.settings import cf
 
 class SimpReportGenerator:
     def __init__(self, json_path: str, session_name: str):
-        self.json_path = Path(f'{cf.DIR_RESULTS}/{session_name}/{json_path}')
+        self.json_path = Path(json_path)
         self.json_file_name = self.json_path.stem
         with open(self.json_path, "r", encoding="utf-8") as f:
             self.data = json.load(f)
@@ -104,10 +104,11 @@ class SimpReportGenerator:
         out_path = self.output_dir / f"{self.json_file_name}detailed.html"
         # out_path = f'{self.output_dir}/{self.json_file_name}detailed.html'
         out_path.write_text(html, encoding="utf-8")
-        print(f"✅ Detailed report generated: {out_path}")
+        # print(f"✅ Detailed report generated: {out_path}")
+        return out_path
 
     def generate_all(self):
-        self.generate_detailed_html()
+        return self.generate_detailed_html()
 
 
 if __name__ == "__main__":

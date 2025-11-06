@@ -7,7 +7,7 @@ from config.settings import cf
 
 class TestResultConverterCSV:
     def __init__(self, json_path: str, session_name: str):
-        self.input_path = Path(f'{cf.DIR_RESULTS}/{session_name}/{json_path}')
+        self.input_path = Path(json_path)
         self.input_file_name = self.input_path.stem
         self.output_path = self.input_path.parent
         self.data = None
@@ -96,8 +96,8 @@ class TestResultConverterCSV:
         self.load_json()
         df = self.build_dataframe()
         df.to_csv(f'{self.output_path}/{self.input_file_name}.csv', index=False)
-        if preview:
-            display("Template CSV Preview", df)
+        # if preview:
+        #     display("Template CSV Preview", df)
         return str(f'{self.output_path}/{self.input_file_name}.csv')
 
 
