@@ -37,6 +37,7 @@ class ExpectedResultBuilder:
         """
         event_seconds = self.time_to_seconds(event_time)
         start_seconds = self.time_to_seconds(event_start_time)
+        # start_seconds = self.time_to_seconds(event_time)
         elapsed = event_seconds - start_seconds
 
         # Formula: elapsed_time * 24 / 2.5 = elapsed_time * 9.6
@@ -84,7 +85,7 @@ class ExpectedResultBuilder:
 
         frames = []
 
-        for detection in expected_result:
+        for index, detection in enumerate(expected_result):
             event_start = detection.get('eventStart', '')
             event_end = detection.get('eventEnd', '')
             area = detection.get('area', [])
@@ -96,16 +97,29 @@ class ExpectedResultBuilder:
             start_offset = self.calculate_relative_frame_offset(event_start, event_start_time)
             end_offset = self.calculate_relative_frame_offset(event_end, event_start_time)
 
+            # Calculate offset from detection start to end (for middle calculation)
+            start_offset_frame = self.calculate_relative_frame_offset(event_start, event_start)
+            end_offset_frame = self.calculate_relative_frame_offset(event_end, event_start)
+
             # Calculate middle offset
+            middle_offset_frame = (start_offset_frame + end_offset_frame) // 2
             middle_offset = (start_offset + end_offset) // 2
 
             # Create bounding box
             bbox = self.area_to_bounding_box(area)
 
             # Generate 3 frames: start, middle, end (with relative offsets)
-            for frame_offset in [start_offset, middle_offset, end_offset]:
+            offset_pairs = [
+                (start_offset, start_offset_frame),
+                (middle_offset, middle_offset_frame),
+                (end_offset, end_offset_frame)
+            ]
+
+            for offset, offset_frame in offset_pairs:
                 frames.append({
-                    "frameId": frame_offset,  # This is RELATIVE offset
+                    "frameId": offset,  # offset theo thời gian từ event_start_time
+                    "offset_frame": offset_frame,  # offset theo frame từ detection start
+                    "expect_id": index,  # index of detection event
                     "detectedAreas": [{
                         "ruleCode": rule_code,
                         "boundingBox": bbox
@@ -168,24 +182,6 @@ class ResultValidator:
     def __init__(self, iou_threshold: float = 0.5):
         self.iou_threshold = iou_threshold
 
-    def find_first_detection_frame(self, frames: List[Dict]) -> int:
-        """
-        Find the first frame with detection
-        Args:
-            frames: List of frames from AI results
-        Returns:
-            frameId of first frame with detectedAreas, or 0 if none found
-        """
-        for frame in frames:
-            detected_areas = frame.get('detectedAreas', [])
-            if detected_areas and len(detected_areas) > 0:
-                first_frame_id = frame.get('frameId', 0)
-                logger.info(f"First detection found at frameId: {first_frame_id}")
-                return first_frame_id
-
-        logger.warning("No detection found in frames")
-        return 0
-
     def calculate_iou(self, box1: Dict, box2: Dict) -> float:
         """
         Calculate Intersection over Union (IoU) between two bounding boxes
@@ -224,6 +220,50 @@ class ResultValidator:
             return 0.0
 
         return inter_area / union_area
+
+    def find_first_detection_frame_with_iou(
+        self,
+        frames: List[Dict],
+        expected_first_frame: Dict
+    ) -> int:
+        """
+        Find the first frame with detection that matches expected frame by IoU
+        Args:
+            frames: List of frames from AI results
+            expected_first_frame: First expected frame to match against
+        Returns:
+            frameId of first matching frame, or 0 if none found
+        """
+        expected_areas = expected_first_frame.get('detectedAreas', [])
+        if not expected_areas:
+            logger.warning("No expected areas in first frame")
+            return 0
+
+        for frame in frames:
+            detected_areas = frame.get('detectedAreas', [])
+            if not detected_areas or len(detected_areas) == 0:
+                continue
+
+            # Check if this frame matches the expected first frame
+            for exp_area in expected_areas:
+                exp_box = exp_area.get('boundingBox', {})
+                exp_rule = exp_area.get('ruleCode', '')
+
+                for act_area in detected_areas:
+                    act_box = act_area.get('boundingBox', {})
+                    act_rule = act_area.get('ruleCode', '')
+
+                    if exp_rule != act_rule:
+                        continue
+
+                    iou = self.calculate_iou(exp_box, act_box)
+                    if iou >= self.iou_threshold:
+                        first_frame_id = frame.get('frameId', 0)
+                        logger.info(f"First matching detection found at frameId: {first_frame_id} (IoU: {iou:.2f})")
+                        return first_frame_id
+
+        logger.warning("No matching detection found for expected first frame")
+        return 0
 
     def match_frame(
         self,
@@ -302,7 +342,7 @@ class ResultValidator:
             return {
                 "video_name": video_name,
                 "test_case_id": expected_data['test_case_id'],
-                "test_case_description": expected_data['test_case_description'],
+                "test_case_description": expected_data.get('test_case_description', ''),
                 "expected_status": expected_status,
                 "total_frames": 0,
                 "matched_frames": 0,
@@ -319,7 +359,7 @@ class ResultValidator:
             return {
                 "video_name": video_name,
                 "test_case_id": expected_data['test_case_id'],
-                "test_case_description": expected_data['test_case_description'],
+                "test_case_description": expected_data.get('test_case_description', ''),
                 "expected_status": expected_status,
                 "total_frames": len(expected_frames),
                 "matched_frames": 0,
@@ -329,73 +369,97 @@ class ResultValidator:
                 "frame_results": []
             }
 
-        # Find first detection frame (offset x)
-        first_detection_frame = self.find_first_detection_frame(actual_results)
+        # NEW LOGIC: Group expected frames by expect_id
+        grouped_frames = {}
+        for frame in expected_frames:
+            expect_id = frame.get('expect_id', 0)
+            if expect_id not in grouped_frames:
+                grouped_frames[expect_id] = []
+            grouped_frames[expect_id].append(frame)
 
-        # Convert expected frames from RELATIVE to ABSOLUTE frameIds
-        absolute_expected_frames = []
-        for exp_frame in expected_frames:
-            relative_frame_id = exp_frame['frameId']
-            absolute_frame_id = first_detection_frame + relative_frame_id
-            absolute_expected_frames.append({
-                "frameId": absolute_frame_id,
-                "detectedAreas": exp_frame['detectedAreas']
-            })
+        logger.info(f"Grouped into {len(grouped_frames)} detection events")
 
         # Create frame lookup from actual results
         actual_frames_map = {f['frameId']: f for f in actual_results}
 
-        total_frames = len(absolute_expected_frames)
-        matched_frames = 0
-        frame_results = []
+        # Validate each group separately
+        all_frame_results = []
+        total_matched = 0
 
-        for exp_frame in absolute_expected_frames:
-            frame_id = exp_frame['frameId']
-            act_frame = actual_frames_map.get(frame_id, {'frameId': frame_id, 'detectedAreas': []})
+        for expect_id in sorted(grouped_frames.keys()):
+            group_frames = grouped_frames[expect_id]
+            logger.info(f"Validating expect_id={expect_id} with {len(group_frames)} frames")
 
-            matched, details = self.match_frame(exp_frame, act_frame)
-            if matched:
-                matched_frames += 1
+            # Get first frame in this group
+            first_expected_frame = group_frames[0]
 
-            frame_results.append({
-                "frameId": frame_id,
-                "matched": matched,
-                "details": details
-            })
+            # Find first detection frame for this group with IoU matching
+            first_detection_frame = self.find_first_detection_frame_with_iou(
+                actual_results,
+                first_expected_frame
+            )
 
-        # Calculate accuracy
-        accuracy = (matched_frames / total_frames * 100) if total_frames > 0 else 0.0
+            if first_detection_frame == 0:
+                logger.warning(f"No matching first frame found for expect_id={expect_id}")
+                # Still validate but all will likely fail
 
-        # Determine detect_result based on >50% match
+            # Validate all frames in this group
+            for exp_frame in group_frames:
+                offset_frame = exp_frame.get('offset_frame', 0)
+                absolute_frame_id = first_detection_frame + offset_frame
+
+                # Get actual frame at this position
+                act_frame = actual_frames_map.get(
+                    absolute_frame_id,
+                    {'frameId': absolute_frame_id, 'detectedAreas': []}
+                )
+
+                # Create expected frame for matching
+                expected_for_match = {
+                    'frameId': absolute_frame_id,
+                    'detectedAreas': exp_frame['detectedAreas']
+                }
+
+                matched, details = self.match_frame(expected_for_match, act_frame)
+                if matched:
+                    total_matched += 1
+
+                all_frame_results.append({
+                    "frameId": absolute_frame_id,
+                    "expect_id": expect_id,
+                    "offset_frame": offset_frame,
+                    "matched": matched,
+                    "details": details
+                })
+
+        # Calculate overall statistics
+        total_frames = len(expected_frames)
+        accuracy = (total_matched / total_frames * 100) if total_frames > 0 else 0.0
         detect_result = "PASSED" if accuracy > 50.0 else "FAILED"
 
         return {
             "video_name": video_name,
             "test_case_id": expected_data['test_case_id'],
+            "test_case_description": expected_data.get('test_case_description', ''),
             "expected_status": expected_status,
-            "first_detection_frame": first_detection_frame,
             "total_frames": total_frames,
-            "matched_frames": matched_frames,
+            "matched_frames": total_matched,
             "accuracy": round(accuracy, 2),
             "detect_result": detect_result,
-            "validation_note": f"Model detects violation but wrong bounding box ({matched_frames}/{total_frames} frames matched)",
-            "frame_results": frame_results
+            "validation_note": f"Model detects violation but wrong bounding box ({total_matched}/{total_frames} frames matched)",
+            "frame_results": all_frame_results
         }
 
 
 if __name__ == "__main__":
     # Example usage
     builder = ExpectedResultBuilder(fps=24, compression_ratio=2.5)
-    result = ResultValidator()
-    print(result.calculate_iou(
-        {'x': 264, 'y': 478, "width": 298, "height": 293},
-        {'x': 354, 'y': 511, "width": 88, "height": 274})
-    )
 
     # Example sheet row
     sheet_row = {
         'TC': '1',
         'Video Name': '305948.mp4',
+        'Test Case Description': 'Test phone usage',
         'Camera Name': '89_KV TOOLBOX',
         'EventStartTime': '02:22',
         'EventEndTime': '02:25',
@@ -414,4 +478,4 @@ if __name__ == "__main__":
     print(f"Expected Frames (RELATIVE): {len(expected['expected_frames'])}")
     print("\nFrame Details (RELATIVE offsets):")
     for frame in expected['expected_frames']:
-        print(f"  Frame offset {frame['frameId']}: {len(frame['detectedAreas'])} detections")
+        print(f"  expect_id={frame['expect_id']}, frameId={frame['frameId']}, offset_frame={frame['offset_frame']}")
