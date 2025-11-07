@@ -219,7 +219,7 @@ class ResultValidator:
         if union_area == 0:
             return 0.0
 
-        return inter_area / union_area
+        return round(inter_area / union_area, 2)
 
     def find_first_detection_frame_with_iou(
         self,

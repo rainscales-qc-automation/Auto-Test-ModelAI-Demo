@@ -61,7 +61,7 @@ class TestResultConverterCSV:
             story = tc.get("test_case_description") or "Use phone"
 
             test_id = f"LFO-{self.rule_code}-{str(test_case_id).zfill(4)}"
-            name = f"{self.org} | {self.rule} | {story} | {camera}"
+            name = f"{story} | {camera}"
             description = f"Auto case for {self.org}/{self.rule}/{story} on {camera}"
             steps = "Open;Check;Assert"
             attachments = f"videos/{video_name}" if video_name else ""
