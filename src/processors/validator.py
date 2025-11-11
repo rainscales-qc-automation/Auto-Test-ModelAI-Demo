@@ -172,7 +172,8 @@ class ExpectedResultBuilder:
             "test_case_description": test_case_description,
             "expected_status": expected_status,
             "expected_frames": expected_frames,  # RELATIVE frameIds
-            "should_validate": True
+            "should_validate": True,
+            "event_start_time": event_start_time,
         }
 
 
@@ -287,6 +288,7 @@ class ResultValidator:
         for exp_area in expected_areas:
             exp_box = exp_area.get('boundingBox', {})
             exp_rule = exp_area.get('ruleCode', '')
+            exp_area['image_path'] = expected_frame['image_path']
 
             best_match = None
             best_iou = 0.0
@@ -307,6 +309,8 @@ class ResultValidator:
             matched = best_iou >= self.iou_threshold
             if matched:
                 matched_count += 1
+            if best_match:
+                best_match['frameID'] = actual_frame['frameId']
 
             match_details.append({
                 "expected": exp_area,
@@ -349,6 +353,7 @@ class ResultValidator:
                 "accuracy": None,
                 "detect_result": "FAILED" if has_detection else "PASSED",
                 "validation_note": "" if not has_detection else "Model detects violation when uploading a NO violation video",
+                "url_video_evidence": expected_data.get('url_video_evidence', ''),
                 "frame_results": []
             }
 
@@ -366,6 +371,7 @@ class ResultValidator:
                 "accuracy": 0.0,
                 "detect_result": "FAILED",
                 "validation_note": "Model detects NO violation when uploading a violation video",
+                "url_video_evidence": expected_data.get('url_video_evidence', ''),
                 "frame_results": []
             }
 
@@ -417,6 +423,7 @@ class ResultValidator:
                 # Create expected frame for matching
                 expected_for_match = {
                     'frameId': absolute_frame_id,
+                    'image_path': exp_frame.get("image_path", ""),
                     'detectedAreas': exp_frame['detectedAreas']
                 }
 
@@ -447,6 +454,7 @@ class ResultValidator:
             "accuracy": round(accuracy, 2),
             "detect_result": detect_result,
             "validation_note": f"Model detects violation but wrong bounding box ({total_matched}/{total_frames} frames matched)",
+            "url_video_evidence": expected_data.get('url_video_evidence', ''),
             "frame_results": all_frame_results
         }
 

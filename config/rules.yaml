@@ -12,14 +12,14 @@ tenant:
       - name: 'NWALKWAY'
         code: 'HM05'
         sheet: 'NWALKWAY_Smoke'
-        enabled: false
+        enabled: true
 
       - name: 'MCROSSR'
         code: 'MHE03'
         sheet: 'MCROSSR_Smoke'
         enabled: false
 
-      - name: 'COLLISON'
+      - name: 'COLLISION'
         code: 'MHE01'
         sheet: 'COLLISON_Smoke'
         enabled: false
@@ -44,7 +44,7 @@ tenant:
         sheet: 'PALLETONF_Smoke'
         enabled: false
 
-      - name: 'OTH02'
+      - name: 'ALCOHOLTEST'
         code: 'OTH02'
         sheet: 'OTH02_Smoke'
         enabled: false

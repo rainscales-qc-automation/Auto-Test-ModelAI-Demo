@@ -122,7 +122,6 @@ class BatchCodeGenerator:
     def generate(tenant_name: str, rule_name: str, timestamp: str) -> str:
         """
         Generate batch code
-
         Returns:
             batch_code
         """
@@ -147,10 +146,8 @@ class CameraMapper:
     def add_codes_to_metadata(self, videos_data: List[Dict]) -> List[Dict]:
         """
         Add camera_code to videos metadata
-
         Args:
             videos_data: [{'video_name': '...', 'camera_name': '...'}, ...]
-
         Returns:
             [{'video_name': '...', 'camera_name': '...', 'camera_code': '...'}, ...]
         """
@@ -175,7 +172,6 @@ class ConfigParser:
     def parse(all_configs: List[Dict], rule_code: str) -> Tuple[Dict, Dict]:
         """
         Parse config for specific rule
-
         Returns:
             (config_dict, camera_mapping)
         """
@@ -253,3 +249,17 @@ def build_result_data(
         "test_case_validation_result": validation_results or [],
         "status": "success"
     }
+
+
+def merge_video_url_into_expected(expected_results, evidences_by_video):
+    """
+    expected_results: dict dạng {'317213.mp4': {...}, ...}
+    evidences_by_video: dict dạng {'317213': {'frames': [...], 'url_video_evidence': 'xxx.mp4'}, ...}
+    """
+    for video_key, info in expected_results.items():
+        key_without_ext = video_key.replace('.mp4', '')
+
+        if key_without_ext in evidences_by_video:
+            url_video = evidences_by_video[key_without_ext]
+            if url_video:
+                info['url_video_evidence'] = url_video
