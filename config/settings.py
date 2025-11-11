@@ -14,8 +14,13 @@ def load_config(file_path):
 
 class Config:
     API_LOCAL = "http://localhost:8888"
-    API_STAGING = "https://fake-agent.reg-stg.rainscales.xyz"
+    # API_STAGING = "https://fake-agent.reg-stg.rainscales.xyz"
+    API_AGENT_AI = os.environ.get("API_AGENT_AI", "https://fake-agent.reg-stg.rainscales.xyz")
+    API_FILE_BROWSER = os.environ.get("API_FILE_BROWSER", "https://filebrowser-7777.reg-ai-stg.evidence.rainscales.xyz")
     API_KEY = os.environ.get("API_KEY", None)
+
+    FILE_BROWSER_USER = os.environ.get("FILE_BROWSER_USER", None)
+    FILE_BROWSER_PASSWORD = os.environ.get("FILE_BROWSER_PASSWORD", None)
 
     TIME_OUT_API = 60
     TIME_SLEEP = int(os.environ.get("TIME_SLEEP", 15))
@@ -37,6 +42,9 @@ class Config:
     RULES_CONFIG = load_config(join(dirname(__file__), 'rules.yaml'))
     DIR_RESULTS = join(join(dirname(dirname(__file__)), 'src'), 'results')
 
+    DIR_EXPECTED_IMAGE = join(join(dirname(dirname(__file__)), 'data_test'), 'expected_frame')
+    DIR_EVIDENCE_IMAGE = join(join(dirname(dirname(__file__)), 'data_test'), 'evidence_frame')
+
     DEBUG = False
 
 
@@ -54,9 +62,9 @@ class Config:
 
 cf = Config()
 if __name__ == '__main__':
-    print(cf.RULES_CONFIG)
-    print(cf.DIR_RESULTS)
-    print(cf.SERVICE_ACCOUNT_FILE)
-
+    # print(cf.RULES_CONFIG)
+    # print(cf.DIR_RESULTS)
+    # print(cf.SERVICE_ACCOUNT_FILE)
+    print(cf.DIR_DRAW_IMAGE)
 
 

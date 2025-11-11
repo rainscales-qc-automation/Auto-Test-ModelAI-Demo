@@ -2,6 +2,8 @@
 # IDE & Editor folder
 /.vscode/
 .idea
+*.jpg
+*.webp
 
 # Data, model
 /models/
@@ -15,7 +17,7 @@ tests/data/records.pkl
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
+*$py.clas
 *.pyc
 *.pyo
 logs

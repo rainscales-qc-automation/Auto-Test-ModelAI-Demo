@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class AIAPIClient:
 
-    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 300, debug = False):
+    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 20, debug = False):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key or cf.API_KEY
         self.timeout = timeout or cf.TIMEOUT
@@ -90,20 +90,64 @@ class AIAPIClient:
         return all_data
 
 
+class FileBrowserAPIClient:
+
+    def __init__(self, base_url: str, user: str = cf.FILE_BROWSER_USER, password: str = cf.FILE_BROWSER_PASSWORD, timeout: int = 20, debug = False):
+        self.user, self.password = user, password
+        self.base_url = base_url.rstrip('/')
+        self.api_login = '/api/login'
+        self.api_raw_evidence = '/api/raw'
+        self.timeout = timeout or cf.TIMEOUT
+        self.session = requests.Session()
+        self.debug = debug
+
+    def get_cookies(self) -> Dict[str, str]:
+        url = f"{self.base_url}{self.api_login}"
+        payload = {"username": self.user, "password": self.password}
+        response = self.session.post(url, json=payload, timeout=self.timeout)
+        if response.status_code != 200:
+            logger.warning(f"API File Browser login failed: {response.text}")
+        cookies = response.text
+        return {'Cookie': f'auth={cookies}'}
+
+    def create_headers(self) -> Dict[str, str]:
+        cookies = self.get_cookies()
+        headers = cookies
+        return headers
+
+    def get_raw_video_evidence_by_code(self, rule_code: str, camera_code: str, event_code: str):
+        pass
+
+    def get_raw_video_evidence_by_filepath(self, file_path_raw: str):
+        if file_path_raw.startswith("/evidence"):
+            file_path_raw = file_path_raw[len("/evidence"):]
+        header = self.create_headers()
+        url_api = f"{self.base_url}{self.api_raw_evidence}{file_path_raw}"
+        response = self.session.get(url_api, headers=header, timeout=self.timeout)
+        if response.status_code != 200:
+            logger.warning(f"API File Browser Get evidence video failed: {response.text}")
+        return response
+
 # Usage
 if __name__ == "__main__":
-    api = AIAPIClient(cf.API_LOCAL)
+    # api = AIAPIClient(cf.API_LOCAL)
+    #
+    # # Create rule
+    # api.update_rule("USEPHONE", {"CAM_001": {"min_distance": 3.5}})
+    #
+    # # Check & upload
+    # missing = api.check_missing_videos(["test.mp4"])
+    # if missing:
+    #     api.upload_videos([("test.mp4", b"data")])
+    #
+    # # Analyze
+    # api.analyze_videos("batch_001", {"CAM_001": ["test"]})
+    #
+    # # Get results
+    # evidences = api.get_all_evidences("batch_001", "USEPHONE")
 
-    # Create rule
-    api.update_rule("USEPHONE", {"CAM_001": {"min_distance": 3.5}})
-
-    # Check & upload
-    missing = api.check_missing_videos(["test.mp4"])
-    if missing:
-        api.upload_videos([("test.mp4", b"data")])
-
-    # Analyze
-    api.analyze_videos("batch_001", {"CAM_001": ["test"]})
-
-    # Get results
-    evidences = api.get_all_evidences("batch_001", "USEPHONE")
+    api_file_browser = FileBrowserAPIClient(cf.API_FILE_BROWSER)
+    print(api_file_browser.get_cookies())
+    print(api_file_browser.get_raw_video_evidence_by_filepath(
+        "/evidence/PAR02/linfox_DCBD-192_168_253_22/deca944d-f6a0-433d-8a5a-7318b6f7490a_llava_True/event_07_02-07-19_now_07_02-08-13.mp4"
+    ))
