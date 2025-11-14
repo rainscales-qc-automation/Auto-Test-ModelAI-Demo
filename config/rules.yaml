@@ -2,6 +2,7 @@ tenant:
   - name: 'Linfox Viet Nam'
     dir: '01. LFVN'
     config rule: 'Rule_Config_Details'
+#    config rule: 'Rule_Config_Draft'
     enabled: true
     rules:
       - name: 'USEPHONE'
@@ -21,7 +22,7 @@ tenant:
 
       - name: 'COLLISION'
         code: 'MHE01'
-        sheet: 'COLLISON_Smoke'
+        sheet: 'COLLISION_Smoke'
         enabled: false
 
       - name: 'MOV8PALLETS'

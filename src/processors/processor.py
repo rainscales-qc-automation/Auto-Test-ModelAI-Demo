@@ -39,6 +39,7 @@ class ProcessedRule:
     batch_code: str
     videos_metadata: List[Dict]
     videos_config: Dict
+    rule_config: Dict
     # camera_rule_config: Dict
     missing_count: int
     video_names: List[str]
@@ -48,14 +49,16 @@ class ProcessedRule:
 class TestProcessor:
     """Process workflow test"""
 
-    def __init__(self, api_url: str = cf.API_LOCAL, debug=cf.DEBUG, iou_threshold=0.5):
+    def __init__(self, api_url: str = cf.API_LOCAL, iou_threshold=0.5, debug=False, batch_debug: str=''):
         self.gs = GoogleSheetConnector()
         self.smb = SMBConnector(cf.SMB_SERVER, cf.SMB_USER, cf.SMB_PASSWORD, cf.SMB_ROOT)
         self.api = AIAPIClient(base_url=api_url, debug=debug)
+        self.api_file_browser = FileBrowserAPIClient(cf.API_FILE_BROWSER)
         self.camera_mapper = CameraMapper()
         self.result_writer = ResultWriter()
         self.timestamp = gen_timestamp()
         self.debug = debug
+        self.batch_debug = batch_debug
         self.iou_threshold = iou_threshold
         self.total_video = 0
 
@@ -95,8 +98,8 @@ class TestProcessor:
             return
 
         logger.info(f"Updating rule: {rule.rule_code} {list(config.keys())}")
-        self.api.update_rule(rule.rule_code, config)
-        return config
+        data_update_config = self.api.update_rule(rule.rule_code, config)
+        return data_update_config
 
     def get_videos_metadata(self, rule: TestRule) -> List[Dict]:
         """Get videos metadata from sheet"""
@@ -184,6 +187,7 @@ class TestProcessor:
             batch_code=batch_code,
             videos_metadata=videos_metadata,
             videos_config=videos_config,
+            rule_config=camera_rule_config,
             # camera_rule_config=camera_rule_config,
             missing_count=len(missing),
             video_names=all_names,
@@ -204,7 +208,7 @@ class TestProcessor:
         expected_results = self.get_expected_results(rule, processed.video_names)
 
         # Process expected images (green bounding boxes)
-        evidence_processor = EvidenceVideoProcessor(self.smb, cf.DIR_EXPECTED_IMAGE)
+        evidence_processor = EvidenceVideoProcessor(self.smb, f'{cf.DIR_EXPECTED_IMAGE}/{rule.rule_name}')
         smb_dir = f"{rule.tenant_dir}/{rule.rule_name}"
         evidence_processor.process_expected_results(expected_results, smb_dir)
 
@@ -254,12 +258,18 @@ class TestProcessor:
                 logger.info(f"Processing evidence images...")
                 logger.info(f"{'=' * 60}")
 
-                api_file_browser = FileBrowserAPIClient(cf.API_FILE_BROWSER)
-
+            if validation.get('expected_status', '') == 'Approve':
                 evidence_processor.process_actual_results(
                     validation_results,
-                    api_file_browser,
-                    output_base_dir=cf.DIR_EVIDENCE_IMAGE
+                    self.api_file_browser,
+                    output_base_dir=f'{cf.DIR_EVIDENCE_IMAGE}/{rule.rule_name}'
+                )
+        for validation in validation_results:
+            if validation.get('expected_status', '') == 'Reject' and validation.get('url_video_evidence', ''):
+                evidence_processor.process_actual_results_reject_video(
+                    validation,
+                    self.api_file_browser,
+                    output_base_dir=f'{cf.DIR_EVIDENCE_IMAGE}/{rule.rule_name}'
                 )
 
         # Calculate timing
@@ -286,6 +296,7 @@ class TestProcessor:
             videos_metadata=processed.videos_metadata,
             missing_count=processed.missing_count,
             videos_config=processed.videos_config,
+            rule_config=processed.rule_config,
             validation_results=validation_results,
             start_time=start_time,
             end_time=end_time,
@@ -331,7 +342,7 @@ class TestProcessor:
         orchestrator.wait_for_ai_processing(processed_rules, self.debug)
 
         # ========== PHASE 2: Validate Results ==========
-        results = orchestrator.execute_phase2_validation(processed_rules, self.debug)
+        results = orchestrator.execute_phase2_validation(processed_rules, self.debug, self.batch_debug)
 
         # Add failed rules from phase 1
         results.extend(failed_rules)
@@ -347,5 +358,5 @@ class TestProcessor:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    processor = TestProcessor(api_url=cf.API_AGENT_AI, debug=True, iou_threshold=0.3)
+    processor = TestProcessor(api_url=cf.API_AGENT_AI, debug=True, iou_threshold=0.01)
     processor.run()

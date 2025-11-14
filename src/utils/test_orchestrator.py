@@ -64,7 +64,7 @@ class TestOrchestrator:
         logger.info(f"{'=' * 80}")
         time.sleep(wait_time)
 
-    def execute_phase2_validation(self, processed_rules: List, debug: bool) -> List[Dict]:
+    def execute_phase2_validation(self, processed_rules: List, debug: bool, batch_debug) -> List[Dict]:
         """
         Phase 2: Fetch and validate results
         Returns:
@@ -81,7 +81,9 @@ class TestOrchestrator:
             try:
                 # Debug mode: override batch_code
                 if debug:
-                    processed.batch_code = 'Linfox_Viet_Nam_NWALKWAY_20251110_085003'
+                    # processed.batch_code = 'Linfox_Viet_Nam_LOADHIGH_20251113_105848'
+                    # processed.batch_code = 'Linfox_Viet_Nam_USEPHONE_20251113_152617'
+                    processed.batch_code = batch_debug
 
                 result = self.processor.validate_results(processed)
                 results.append({
