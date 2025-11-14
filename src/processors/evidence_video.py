@@ -449,6 +449,104 @@ class EvidenceVideoProcessor:
 
         return validation_results
 
+    def process_actual_results_reject_video(
+        self,
+        validation: Dict,
+        api_file_browser,
+        output_base_dir: str = None,
+        draw_kwargs: Dict = None
+    ):
+        if draw_kwargs is None:
+            draw_kwargs = {
+                'color': (255, 0, 0),  # Red for actual/evidence
+                'thickness': 3,
+                'show_label': True
+            }
+        output_dir = Path(output_base_dir) if output_base_dir else self.output_base_dir
+        video_name = validation.get('video_name', '')
+        url_video_evidence = validation.get('url_video_evidence', '')
+        frame_results = validation.get('frame_results', {})
+
+        try:
+            # Skip if no evidence video URL
+            if not url_video_evidence:
+                logger.debug(f"REJECT VIDEO - No evidence video for {video_name}, skipping")
+                return
+
+            # Skip if no frame results
+            if not frame_results:
+                logger.debug(f"REJECT VIDEO - No frame results for {video_name}, skipping")
+                return
+
+            logger.info(f"REJECT VIDEO - Processing evidence for: {video_name}")
+
+            # Create output directory for this video
+            video_output_dir = output_dir / video_name.replace('.mp4', '')
+            video_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Collect frames that need processing
+            frames_to_process = []
+            for actual_frame in frame_results['actual']:
+                    frame_id = actual_frame.get('frameId')
+                    if frame_id is None:
+                        continue
+
+                    # Generate filename
+                    filename = f"{video_name.replace('.mp4', '')}_evidence_frame_{frame_id:06d}.webp"
+                    image_path = video_output_dir / filename
+
+                    # Check if image already exists
+                    if image_path.exists():
+                        actual_frame['image_path'] = str(image_path)
+                        logger.debug(f"  Image exists: {filename}")
+                        continue
+
+                    # Extract bounding box
+                    bbox_data = actual_frame.get('detectedAreas', {})[0].get('boundingBox', {})
+                    bbox = BoundingBox(
+                        x=bbox_data.get('x', 0),
+                        y=bbox_data.get('y', 0),
+                        width=bbox_data.get('width', 0),
+                        height=bbox_data.get('height', 0),
+                        confidence=actual_frame.get('detectedAreas', {})[0].get('confidence'),
+                        rule_code=actual_frame.get('detectedAreas', {})[0].get('ruleCode')
+                    )
+
+                    frames_to_process.append({
+                        'frame_id': frame_id,
+                        'image_path': image_path,
+                        'bounding_boxes': [bbox],
+                        'actual_ref': actual_frame  # Keep reference to update image_path
+                    })
+
+            if not frames_to_process:
+                logger.info(f"  All evidence images exist for {video_name}, skipping")
+                return
+
+            logger.info(f"  Need to create {len(frames_to_process)} evidence images")
+
+            # Download evidence video
+            logger.info(f"  Downloading evidence video from: {url_video_evidence}")
+            response = api_file_browser.get_raw_video_evidence_by_filepath(url_video_evidence)
+            video_bytes = response.content
+            logger.info(f"  Downloaded {len(video_bytes)} bytes")
+
+            # Process video and create images
+            created_count = self._process_evidence_video(
+                video_bytes,
+                frames_to_process,
+                draw_kwargs
+            )
+
+            logger.info(f"  Created {created_count} new evidence images for {video_name}")
+
+        except Exception as e:
+            logger.error(f"  Failed to process evidence for validation {video_name}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+        return validation
+
     def _extract_bounding_boxes(self, frame_info: Dict) -> List[BoundingBox]:
         """Extract bounding boxes from frame info"""
         boxes = []

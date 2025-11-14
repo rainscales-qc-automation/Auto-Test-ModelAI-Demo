@@ -209,6 +209,7 @@ def build_result_data(
         videos_metadata: List[Dict],
         missing_count: int,
         videos_config: Dict,
+        rule_config: Dict,
         validation_results: List[Dict] = None,
         start_time: datetime = None,
         end_time: datetime = None,
@@ -239,6 +240,7 @@ def build_result_data(
         "total_testcases": total_testcases,
         "uploaded_videos": missing_count,
         "videos_config": videos_config,
+        "rule_config": rule_config,
         "test_statistics": {
             "total": total_testcases,
             "passed": passed_count,
@@ -263,3 +265,16 @@ def merge_video_url_into_expected(expected_results, evidences_by_video):
             url_video = evidences_by_video[key_without_ext]
             if url_video:
                 info['url_video_evidence'] = url_video
+
+
+def get_first_frame_id_reject_video(actual_results: List[Dict]):
+    valid = [item for item in actual_results if item["detectedAreas"]]
+
+    if len(valid) >= 2:
+        i1 = len(valid) // 3
+        i2 = (len(valid) * 2) // 3
+        result = [valid[i1], valid[i2]]
+    else:
+        result = valid  # nếu ít hơn 2 phần tử
+
+    return result

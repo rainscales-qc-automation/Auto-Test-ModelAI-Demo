@@ -30,7 +30,7 @@ class AIAPIClient:
         response = self.session.post(url, json=data_update, headers=self.hard_headers, timeout=self.timeout)
         response.raise_for_status()
         logger.info(f"API update rule: {rule_code}" )
-        return response.json()
+        return data_update
 
     def upload_videos(self, videos: List[Tuple[str, bytes]]) -> Dict:
         """Upload videos: [(filename, video_data), ...]"""

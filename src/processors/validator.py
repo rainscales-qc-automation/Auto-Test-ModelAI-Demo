@@ -2,6 +2,8 @@
 import logging
 from typing import List, Dict, Tuple
 
+from src.utils.helpers import get_first_frame_id_reject_video
+
 logger = logging.getLogger(__name__)
 
 
@@ -223,48 +225,79 @@ class ResultValidator:
         return round(inter_area / union_area, 2)
 
     def find_first_detection_frame_with_iou(
-        self,
-        frames: List[Dict],
-        expected_first_frame: Dict
+            self,
+            frames: List[Dict],
+            expected_first_frame: Dict
     ) -> int:
         """
-        Find the first frame with detection that matches expected frame by IoU
+        Find the frame with highest IoU detection that matches expected frame
         Args:
             frames: List of frames from AI results
             expected_first_frame: First expected frame to match against
         Returns:
-            frameId of first matching frame, or 0 if none found
+            frameId of best matching frame (highest IoU >= threshold), or 0 if none found
         """
         expected_areas = expected_first_frame.get('detectedAreas', [])
         if not expected_areas:
             logger.warning("No expected areas in first frame")
             return 0
 
+        best_match = {
+            'frame_id': 0,
+            'iou': 0.0,
+            'exp_area_idx': -1,
+            'act_area_idx': -1
+        }
+
+        # Iterate through all frames to find the best match
         for frame in frames:
             detected_areas = frame.get('detectedAreas', [])
             if not detected_areas or len(detected_areas) == 0:
                 continue
 
-            # Check if this frame matches the expected first frame
-            for exp_area in expected_areas:
+            frame_id = frame.get('frameId', 0)
+
+            # Check all combinations of expected and actual areas
+            for exp_idx, exp_area in enumerate(expected_areas):
                 exp_box = exp_area.get('boundingBox', {})
                 exp_rule = exp_area.get('ruleCode', '')
 
-                for act_area in detected_areas:
+                for act_idx, act_area in enumerate(detected_areas):
                     act_box = act_area.get('boundingBox', {})
                     act_rule = act_area.get('ruleCode', '')
 
+                    # Skip if rule codes don't match
                     if exp_rule != act_rule:
                         continue
 
+                    # Calculate IoU
                     iou = self.calculate_iou(exp_box, act_box)
-                    if iou >= self.iou_threshold:
-                        first_frame_id = frame.get('frameId', 0)
-                        logger.info(f"First matching detection found at frameId: {first_frame_id} (IoU: {iou:.2f})")
-                        return first_frame_id
 
-        logger.warning("No matching detection found for expected first frame")
-        return 0
+                    # Update best match if this IoU is higher
+                    if iou > best_match['iou']:
+                        best_match = {
+                            'frame_id': frame_id,
+                            'iou': iou,
+                            'exp_area_idx': exp_idx,
+                            'act_area_idx': act_idx
+                        }
+
+        # Check if best match meets threshold
+        if best_match['iou'] >= self.iou_threshold:
+            logger.info(
+                f"Best matching detection found at frameId: {best_match['frame_id']} "
+                f"(IoU: {best_match['iou']:.4f}, threshold: {self.iou_threshold:.2f})"
+            )
+            return best_match['frame_id']
+        else:
+            if best_match['iou'] > 0:
+                logger.warning(
+                    f"Best IoU {best_match['iou']:.4f} at frameId {best_match['frame_id']} "
+                    f"is below threshold {self.iou_threshold:.2f}"
+                )
+            else:
+                logger.warning("No matching detection found for expected first frame")
+            return 0
 
     def match_frame(
         self,
@@ -342,6 +375,9 @@ class ResultValidator:
         # Case 1: Expected Status = "Reject"
         if expected_status.lower() == 'reject':
             has_detection = len(actual_results) > 0
+            frame_results = {}
+            if actual_results:
+                frame_results['actual'] = get_first_frame_id_reject_video(actual_results)
 
             return {
                 "video_name": video_name,
@@ -354,7 +390,7 @@ class ResultValidator:
                 "detect_result": "FAILED" if has_detection else "PASSED",
                 "validation_note": "" if not has_detection else "Model detects violation when uploading a NO violation video",
                 "url_video_evidence": expected_data.get('url_video_evidence', ''),
-                "frame_results": []
+                "frame_results": frame_results
             }
 
         # Case 2: Expected Status = "Approve"

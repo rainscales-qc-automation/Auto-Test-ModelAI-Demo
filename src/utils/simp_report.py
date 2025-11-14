@@ -22,7 +22,7 @@ def image_to_base64(image_path: str) -> str:
 
         # Resize to half width/height
         w, h = img.size
-        img = img.resize((w // 3, h // 3))
+        img = img.resize((w // 2, h // 2))
 
         # Save resized to memory buffer
         buffer = BytesIO()
@@ -83,7 +83,55 @@ class SimpReportGenerator:
                 </tr>
                 """
 
-                # Frame-level details
+                fr = case["frame_results"]
+
+                # === SPECIAL CASE: expected_status = REJECT + frame_results có actual ===
+                if case["expected_status"] == "Reject" and isinstance(fr, dict) and "actual" in fr:
+                    html_sections += f"""
+                    <tr><td colspan="7">
+                        <details>
+                            <summary><b>Frame Details Reject</b></summary>
+                            <table class="frame-detail-table">
+                                <tr>
+                                    <th>Frame ID</th>
+                                    <th>Bounding Box Count</th>
+                                    <th>Evidence Images</th>
+                                </tr>
+                    """
+
+                    for frame in fr["actual"]:
+                        img_b64 = image_to_base64(frame.get("image_path", ""))
+                        bbox_count = len(frame.get("detectedAreas", []))
+
+                        row_id = f"reject-{frame['frameId']}-{hash(frame['image_path'])}"
+
+                        html_sections += f"""
+                            <tr>
+                                <td>{frame['frameId']}</td>
+                                <td>{bbox_count}</td>
+                                <td>
+                                    <button class="img-btn" onclick="toggleExclusive(
+                                        ['{row_id}'],
+                                        '{row_id}'
+                                    )">View</button>
+                                </td>
+                            </tr>
+                        """
+
+                        if img_b64:
+                            html_sections += f"""
+                            <tr id="{row_id}" style="display:none;">
+                                <td colspan="6">
+                                    <div class="image-row-horizontal">
+                                        <img src="{img_b64}">
+                                    </div>
+                                </td>
+                            </tr>
+                            """
+
+                    html_sections += "</table></details></td></tr>"
+                    continue  # IMPORTANT → bỏ qua xử lý chuẩn phía dưới
+
                 if case["frame_results"]:
                     html_sections += """
                     <tr><td colspan="7">
